@@ -7,7 +7,8 @@
     <title>Essential Links – Glass Edition</title>
 
     <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🔗</text></svg>">
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🔗</text></svg>">
 
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
@@ -887,7 +888,8 @@
                     <div>
                         <label
                             class="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500 ml-1">Password</label>
-                        <input type="password" id="loginPass" placeholder="Enter password" autocomplete="current-password"
+                        <input type="password" id="loginPass" placeholder="Enter password"
+                            autocomplete="current-password"
                             class="w-full px-4 py-2 rounded-lg bg-white/50 dark:bg-slate-800/50 border border-stone-200 dark:border-slate-700 focus:ring-2 focus:ring-violet-500/20 outline-none transition-all text-sm text-stone-900 dark:text-white">
                     </div>
                     <button type="submit"
@@ -899,90 +901,110 @@
         </div>
     </div>
 
-<script>
-    // --- Configuration ---
-    const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbztOYMvMS0YoLGGcXCM4yqc0bCchNBKRLkd10cwUI8kbbO8DundWmIPiGjHyaPovUs5mg/exec';
+    <script>
+        // --- Configuration ---
+        const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbztOYMvMS0YoLGGcXCM4yqc0bCchNBKRLkd10cwUI8kbbO8DundWmIPiGjHyaPovUs5mg/exec';
 
-    // --- State ---
-    let links = [];
-    let userCredentials = [];
-    let currentFilter = '';
-    let urlToDelete = null;
-    let isSyncing = false;
-    let metadataCache = new Map();
-    const container = document.getElementById('mainContainer');
-    const emptyState = document.getElementById('emptyState');
-    const loadingPopup = document.getElementById('loadingPopup');
-    const syncIndicator = document.getElementById('syncIndicator');
-    const syncStatus = document.getElementById('syncStatus');
+        // --- State ---
+        let links = [];
+        let userCredentials = [];
+        let currentFilter = '';
+        let urlToDelete = null;
+        let isSyncing = false;
+        let metadataCache = new Map();
+        const container = document.getElementById('mainContainer');
+        const emptyState = document.getElementById('emptyState');
+        const loadingPopup = document.getElementById('loadingPopup');
+        const syncIndicator = document.getElementById('syncIndicator');
+        const syncStatus = document.getElementById('syncStatus');
 
-    // --- Fix DOM warnings ---
-    document.addEventListener('DOMContentLoaded', function() {
-        const loginIdInput = document.getElementById('loginId');
-        const loginPassInput = document.getElementById('loginPass');
-        
-        if (loginIdInput) {
-            loginIdInput.setAttribute('autocomplete', 'username');
-            loginIdInput.setAttribute('aria-label', 'Edit Mode ID');
-        }
-        
-        if (loginPassInput) {
-            // Change to text type and add autocomplete="off"
-            loginPassInput.type = 'text';
-            loginPassInput.setAttribute('autocomplete', 'off');
-            loginPassInput.setAttribute('aria-label', 'Edit Mode Code');
-        }
-        
-        // Add favicon to fix 404
-        if (!document.querySelector('link[rel="icon"]')) {
-            const favicon = document.createElement('link');
-            favicon.rel = 'icon';
-            favicon.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔗</text></svg>';
-            document.head.appendChild(favicon);
-        }
-    });
+        // --- Fix DOM warnings ---
+        document.addEventListener('DOMContentLoaded', function () {
+            const loginIdInput = document.getElementById('loginId');
+            const loginPassInput = document.getElementById('loginPass');
 
-    // --- Simple Fetch Helper (GET method for compatibility) ---
-    async function callGoogleScript(functionName, params = {}) {
-        // Build URL with parameters
-        let url = `${GAS_WEB_APP_URL}?action=${encodeURIComponent(functionName)}`;
-        
-        // Add other parameters
-        Object.keys(params).forEach(key => {
-            if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
-                url += `&${key}=${encodeURIComponent(params[key])}`;
+            if (loginIdInput) {
+                loginIdInput.setAttribute('autocomplete', 'username');
+                loginIdInput.setAttribute('aria-label', 'Edit Mode ID');
+            }
+
+            if (loginPassInput) {
+                // Change to text type and add autocomplete="off"
+                loginPassInput.type = 'text';
+                loginPassInput.setAttribute('autocomplete', 'off');
+                loginPassInput.setAttribute('aria-label', 'Edit Mode Code');
+            }
+
+            // Add favicon to fix 404
+            if (!document.querySelector('link[rel="icon"]')) {
+                const favicon = document.createElement('link');
+                favicon.rel = 'icon';
+                favicon.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔗</text></svg>';
+                document.head.appendChild(favicon);
             }
         });
-        
-        console.log(`📤 Calling: ${functionName}`, url);
-        
-        try {
-            // Use GET method instead of POST for better CORS compatibility
-            const response = await fetch(url, {
-                method: 'GET',
-                cache: 'no-cache',
-                headers: {
-                    'Accept': 'application/json'
+
+        // --- Cache Functions ---
+        function loadCacheFromStorage() {
+            const saved = localStorage.getItem('metadataCache');
+            if (saved) {
+                try {
+                    const cacheObj = JSON.parse(saved);
+                    metadataCache = new Map(Object.entries(cacheObj));
+                    console.log(`📁 Loaded ${metadataCache.size} items from cache`);
+                } catch (e) {
+                    console.warn('Cache parsing failed, starting fresh');
+                    metadataCache = new Map();
+                }
+            }
+        }
+
+        function saveCacheToStorage() {
+            const cacheObj = Object.fromEntries(metadataCache);
+            localStorage.setItem('metadataCache', JSON.stringify(cacheObj));
+        }
+
+        // --- Simple Fetch Helper (GET method for compatibility) ---
+        async function callGoogleScript(functionName, params = {}) {
+            // Build URL with parameters
+            let url = `${GAS_WEB_APP_URL}?action=${encodeURIComponent(functionName)}`;
+
+            // Add other parameters
+            Object.keys(params).forEach(key => {
+                if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
+                    url += `&${key}=${encodeURIComponent(params[key])}`;
                 }
             });
-            
-            console.log(`📥 Response status: ${response.status} for ${functionName}`);
-            
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-            
-            const result = await response.json();
-            console.log(`📊 Response data:`, result);
-            return result;
-            
-        } catch (error) {
-            console.error(`❌ Failed to call ${functionName}:`, error);
-            console.error('URL attempted:', url);
-            
-            // Provide troubleshooting tips
-            if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-                console.error(`
+
+            console.log(`📤 Calling: ${functionName}`, url);
+
+            try {
+                // Use GET method instead of POST for better CORS compatibility
+                const response = await fetch(url, {
+                    method: 'GET',
+                    cache: 'no-cache',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                console.log(`📥 Response status: ${response.status} for ${functionName}`);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                console.log(`📊 Response data:`, result);
+                return result;
+
+            } catch (error) {
+                console.error(`❌ Failed to call ${functionName}:`, error);
+                console.error('URL attempted:', url);
+
+                // Provide troubleshooting tips
+                if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+                    console.error(`
 🔧 TROUBLESHOOTING:
 1. Open this URL in browser: ${GAS_WEB_APP_URL}?action=test
 2. If you see {"success":true,"message":"API is working"}, your GAS is working
@@ -991,478 +1013,478 @@
    - Who has access: "Anyone" or "Anyone with Google account"
 4. Check browser console for CORS errors
                 `);
-            }
-            
-            throw error;
-        }
-    }
-
-    // --- Load Data from Google Sheets ---
-    async function loadDataFromSheets() {
-        if (isSyncing) return;
-        
-        isSyncing = true;
-        showLoader();
-        showSyncIndicator('Connecting to Google Sheets...', 'syncing');
-        
-        try {
-            console.log('🔄 Loading data from Google Sheets...');
-            
-            // Test connection first
-            const testUrl = `${GAS_WEB_APP_URL}?action=test`;
-            console.log('🔗 Testing connection:', testUrl);
-            
-            try {
-                const testResponse = await fetch(testUrl);
-                console.log('🔌 Test response status:', testResponse.status);
-                
-                if (testResponse.status === 200) {
-                    console.log('✅ GAS is reachable');
                 }
-            } catch (testError) {
-                console.warn('⚠️ GAS test failed, but continuing...', testError.message);
-            }
-            
-            // Load data
-            const result = await callGoogleScript('getLinksFromSheet');
-            
-            if (result && result.success && result.data) {
-                links = result.data;
-                userCredentials = result.credentials || [];
-                
-                // Save to localStorage
-                localStorage.setItem('links', JSON.stringify(links));
-                localStorage.setItem('lastSync', new Date().toISOString());
-                
-                console.log(`✅ Loaded ${links.length} links from Google Sheets`);
-                
-                // Update UI
-                updateSyncStatus(`Loaded ${links.length} links`, 'synced');
-                showToast(`Loaded ${links.length} links from Google Sheets`, 'success');
-                
-                // Render cards immediately
-                renderQuickCards();
-                
-                // Fetch metadata in background
-                setTimeout(() => {
-                    enhanceCardsWithMetadata();
-                }, 100);
-                
-            } else if (result && result.error) {
-                console.error('❌ Sheet error:', result.error);
-                updateSyncStatus('Google Sheets error', 'error');
-                showToast('Google Sheets error: ' + (result.message || result.error), 'error');
-                loadFromLocalStorage();
-            } else {
-                console.error('❌ Unexpected response:', result);
-                updateSyncStatus('Unexpected response', 'error');
-                loadFromLocalStorage();
-            }
-            
-        } catch (error) {
-            console.error('🚫 Failed to load from sheets:', error);
-            
-            // Determine error type
-            let errorMsg = 'Connection failed';
-            if (error.message.includes('Failed to fetch')) {
-                errorMsg = 'Cannot connect to Google Apps Script';
-            } else if (error.message.includes('CORS')) {
-                errorMsg = 'CORS error - check GAS deployment permissions';
-            } else {
-                errorMsg = error.message;
-            }
-            
-            updateSyncStatus(errorMsg, 'error');
-            showToast(errorMsg, 'error');
-            
-            // Load from local storage as fallback
-            loadFromLocalStorage();
-            
-        } finally {
-            isSyncing = false;
-            hideLoader();
-        }
-    }
 
-    // --- Fallback: Load from Local Storage ---
-    function loadFromLocalStorage() {
-        try {
-            const stored = localStorage.getItem('links');
-            if (stored) {
-                links = JSON.parse(stored);
-                console.log(`📂 Loaded ${links.length} links from local storage`);
-                showToast(`Loaded ${links.length} links from local storage`, 'info');
-                renderQuickCards();
-                return true;
+                throw error;
             }
-        } catch (e) {
-            console.error('Local storage error:', e);
         }
-        
-        // Default sample data
-        links = [
-            { url: 'https://uiverse.io/', group: 'Design', tags: ['ui', 'css'] },
-            { url: 'https://www.flaticon.com/', group: 'Design', tags: ['icons', 'svg'] },
-            { url: 'https://github.com/', group: 'Dev', tags: ['code', 'git'] },
-            { url: 'https://tailwindcss.com/', group: 'Dev', tags: ['css', 'framework'] },
-            { url: 'https://dribbble.com/', group: 'Inspiration', tags: ['design', 'art'] },
-            { url: 'https://figma.com/', group: 'Tools', tags: ['design', 'tool'] }
-        ];
-        
-        console.log(`🎨 Using ${links.length} sample links`);
-        showToast('Using sample data', 'info');
-        renderQuickCards();
-        return false;
-    }
 
-    // --- CRUD Operations ---
-    async function saveLinkToSheets(url, group, tags) {
-        showLoader();
-        showSyncIndicator('Saving to Google Sheets...', 'syncing');
-        
-        try {
-            const tagString = Array.isArray(tags) ? tags.join(',') : tags;
-            const result = await callGoogleScript('saveLinkToSheet', {
-                url: url,
-                group: group,
-                tags: tagString
-            });
-            
-            if (result.success) {
-                // Update local state
+        // --- Load Data from Google Sheets ---
+        async function loadDataFromSheets() {
+            if (isSyncing) return;
+
+            isSyncing = true;
+            showLoader();
+            showSyncIndicator('Connecting to Google Sheets...', 'syncing');
+
+            try {
+                console.log('🔄 Loading data from Google Sheets...');
+
+                // Test connection first
+                const testUrl = `${GAS_WEB_APP_URL}?action=test`;
+                console.log('🔗 Testing connection:', testUrl);
+
+                try {
+                    const testResponse = await fetch(testUrl);
+                    console.log('🔌 Test response status:', testResponse.status);
+
+                    if (testResponse.status === 200) {
+                        console.log('✅ GAS is reachable');
+                    }
+                } catch (testError) {
+                    console.warn('⚠️ GAS test failed, but continuing...', testError.message);
+                }
+
+                // Load data
+                const result = await callGoogleScript('getLinksFromSheet');
+
+                if (result && result.success && result.data) {
+                    links = result.data;
+                    userCredentials = result.credentials || [];
+
+                    // Save to localStorage
+                    localStorage.setItem('links', JSON.stringify(links));
+                    localStorage.setItem('lastSync', new Date().toISOString());
+
+                    console.log(`✅ Loaded ${links.length} links from Google Sheets`);
+
+                    // Update UI
+                    updateSyncStatus(`Loaded ${links.length} links`, 'synced');
+                    showToast(`Loaded ${links.length} links from Google Sheets`, 'success');
+
+                    // Render cards immediately
+                    renderQuickCards();
+
+                    // Fetch metadata in background
+                    setTimeout(() => {
+                        enhanceCardsWithMetadata();
+                    }, 100);
+
+                } else if (result && result.error) {
+                    console.error('❌ Sheet error:', result.error);
+                    updateSyncStatus('Google Sheets error', 'error');
+                    showToast('Google Sheets error: ' + (result.message || result.error), 'error');
+                    loadFromLocalStorage();
+                } else {
+                    console.error('❌ Unexpected response:', result);
+                    updateSyncStatus('Unexpected response', 'error');
+                    loadFromLocalStorage();
+                }
+
+            } catch (error) {
+                console.error('🚫 Failed to load from sheets:', error);
+
+                // Determine error type
+                let errorMsg = 'Connection failed';
+                if (error.message.includes('Failed to fetch')) {
+                    errorMsg = 'Cannot connect to Google Apps Script';
+                } else if (error.message.includes('CORS')) {
+                    errorMsg = 'CORS error - check GAS deployment permissions';
+                } else {
+                    errorMsg = error.message;
+                }
+
+                updateSyncStatus(errorMsg, 'error');
+                showToast(errorMsg, 'error');
+
+                // Load from local storage as fallback
+                loadFromLocalStorage();
+
+            } finally {
+                isSyncing = false;
+                hideLoader();
+            }
+        }
+
+        // --- Fallback: Load from Local Storage ---
+        function loadFromLocalStorage() {
+            try {
+                const stored = localStorage.getItem('links');
+                if (stored) {
+                    links = JSON.parse(stored);
+                    console.log(`📂 Loaded ${links.length} links from local storage`);
+                    showToast(`Loaded ${links.length} links from local storage`, 'info');
+                    renderQuickCards();
+                    return true;
+                }
+            } catch (e) {
+                console.error('Local storage error:', e);
+            }
+
+            // Default sample data
+            links = [
+                { url: 'https://uiverse.io/', group: 'Design', tags: ['ui', 'css'] },
+                { url: 'https://www.flaticon.com/', group: 'Design', tags: ['icons', 'svg'] },
+                { url: 'https://github.com/', group: 'Dev', tags: ['code', 'git'] },
+                { url: 'https://tailwindcss.com/', group: 'Dev', tags: ['css', 'framework'] },
+                { url: 'https://dribbble.com/', group: 'Inspiration', tags: ['design', 'art'] },
+                { url: 'https://figma.com/', group: 'Tools', tags: ['design', 'tool'] }
+            ];
+
+            console.log(`🎨 Using ${links.length} sample links`);
+            showToast('Using sample data', 'info');
+            renderQuickCards();
+            return false;
+        }
+
+        // --- CRUD Operations ---
+        async function saveLinkToSheets(url, group, tags) {
+            showLoader();
+            showSyncIndicator('Saving to Google Sheets...', 'syncing');
+
+            try {
+                const tagString = Array.isArray(tags) ? tags.join(',') : tags;
+                const result = await callGoogleScript('saveLinkToSheet', {
+                    url: url,
+                    group: group,
+                    tags: tagString
+                });
+
+                if (result.success) {
+                    // Update local state
+                    const tagArray = Array.isArray(tags) ? tags : (tags ? tags.split(',').map(t => t.trim()) : []);
+                    links.unshift({ url, group, tags: tagArray });
+                    localStorage.setItem('links', JSON.stringify(links));
+
+                    updateSyncStatus('Saved to Google Sheets', 'synced');
+                    showToast('Link saved to Google Sheets', 'success');
+                    renderQuickCards();
+                } else {
+                    updateSyncStatus('Save failed', 'error');
+                    showToast('Failed to save: ' + (result.error || result.message || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Save failed:', error);
+
+                // Save locally as fallback
                 const tagArray = Array.isArray(tags) ? tags : (tags ? tags.split(',').map(t => t.trim()) : []);
                 links.unshift({ url, group, tags: tagArray });
                 localStorage.setItem('links', JSON.stringify(links));
-                
-                updateSyncStatus('Saved to Google Sheets', 'synced');
-                showToast('Link saved to Google Sheets', 'success');
-                renderQuickCards();
-            } else {
-                updateSyncStatus('Save failed', 'error');
-                showToast('Failed to save: ' + (result.error || result.message || 'Unknown error'), 'error');
-            }
-        } catch (error) {
-            console.error('Save failed:', error);
-            
-            // Save locally as fallback
-            const tagArray = Array.isArray(tags) ? tags : (tags ? tags.split(',').map(t => t.trim()) : []);
-            links.unshift({ url, group, tags: tagArray });
-            localStorage.setItem('links', JSON.stringify(links));
-            
-            updateSyncStatus('Saved locally', 'error');
-            showToast('Link saved locally (Sheet error)', 'warning');
-            renderQuickCards();
-        } finally {
-            hideLoader();
-        }
-    }
 
-    async function updateLinkInSheets(oldUrl, newUrl, group, tags) {
-        showLoader();
-        showSyncIndicator('Updating Google Sheets...', 'syncing');
-        
-        try {
-            const tagString = Array.isArray(tags) ? tags.join(',') : tags;
-            const result = await callGoogleScript('updateLinkInSheet', {
-                oldUrl: oldUrl,
-                newUrl: newUrl,
-                group: group,
-                tags: tagString
-            });
-            
-            if (result.success) {
-                // Update local state
+                updateSyncStatus('Saved locally', 'error');
+                showToast('Link saved locally (Sheet error)', 'warning');
+                renderQuickCards();
+            } finally {
+                hideLoader();
+            }
+        }
+
+        async function updateLinkInSheets(oldUrl, newUrl, group, tags) {
+            showLoader();
+            showSyncIndicator('Updating Google Sheets...', 'syncing');
+
+            try {
+                const tagString = Array.isArray(tags) ? tags.join(',') : tags;
+                const result = await callGoogleScript('updateLinkInSheet', {
+                    oldUrl: oldUrl,
+                    newUrl: newUrl,
+                    group: group,
+                    tags: tagString
+                });
+
+                if (result.success) {
+                    // Update local state
+                    const index = links.findIndex(l => l.url === oldUrl);
+                    if (index !== -1) {
+                        const tagArray = Array.isArray(tags) ? tags : (tags ? tags.split(',').map(t => t.trim()) : []);
+                        links[index] = { url: newUrl, group, tags: tagArray };
+                        localStorage.setItem('links', JSON.stringify(links));
+                    }
+
+                    updateSyncStatus('Updated in Google Sheets', 'synced');
+                    showToast('Link updated in Google Sheets', 'success');
+                    renderQuickCards();
+                } else {
+                    updateSyncStatus('Update failed', 'error');
+                    showToast('Failed to update: ' + (result.error || result.message || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Update failed:', error);
+
+                // Update locally as fallback
                 const index = links.findIndex(l => l.url === oldUrl);
                 if (index !== -1) {
                     const tagArray = Array.isArray(tags) ? tags : (tags ? tags.split(',').map(t => t.trim()) : []);
                     links[index] = { url: newUrl, group, tags: tagArray };
                     localStorage.setItem('links', JSON.stringify(links));
                 }
-                
-                updateSyncStatus('Updated in Google Sheets', 'synced');
-                showToast('Link updated in Google Sheets', 'success');
+
+                updateSyncStatus('Updated locally', 'error');
+                showToast('Link updated locally', 'warning');
                 renderQuickCards();
-            } else {
-                updateSyncStatus('Update failed', 'error');
-                showToast('Failed to update: ' + (result.error || result.message || 'Unknown error'), 'error');
-            }
-        } catch (error) {
-            console.error('Update failed:', error);
-            
-            // Update locally as fallback
-            const index = links.findIndex(l => l.url === oldUrl);
-            if (index !== -1) {
-                const tagArray = Array.isArray(tags) ? tags : (tags ? tags.split(',').map(t => t.trim()) : []);
-                links[index] = { url: newUrl, group, tags: tagArray };
-                localStorage.setItem('links', JSON.stringify(links));
-            }
-            
-            updateSyncStatus('Updated locally', 'error');
-            showToast('Link updated locally', 'warning');
-            renderQuickCards();
-        } finally {
-            hideLoader();
-        }
-    }
-
-    async function deleteLinkFromSheets(url) {
-        showLoader();
-        showSyncIndicator('Deleting from Google Sheets...', 'syncing');
-        
-        try {
-            const result = await callGoogleScript('deleteLinkFromSheet', { url: url });
-            
-            if (result.success) {
-                // Update local state
-                links = links.filter(l => l.url !== url);
-                localStorage.setItem('links', JSON.stringify(links));
-                
-                updateSyncStatus('Deleted from Google Sheets', 'synced');
-                showToast('Link deleted from Google Sheets', 'success');
-                renderQuickCards();
-            } else {
-                updateSyncStatus('Delete failed', 'error');
-                showToast('Failed to delete: ' + (result.error || result.message || 'Unknown error'), 'error');
-            }
-        } catch (error) {
-            console.error('Delete failed:', error);
-            
-            // Delete locally as fallback
-            links = links.filter(l => l.url !== url);
-            localStorage.setItem('links', JSON.stringify(links));
-            
-            updateSyncStatus('Deleted locally', 'error');
-            showToast('Link deleted locally', 'warning');
-            renderQuickCards();
-        } finally {
-            hideLoader();
-        }
-    }
-
-    // --- Login Verification ---
-    async function verifyCredentials(id, password) {
-        try {
-            const result = await callGoogleScript('verifyCredentials', {
-                id: id,
-                password: password
-            });
-            
-            return result && result.success;
-        } catch (error) {
-            console.error('Login verification failed:', error);
-            return false;
-        }
-    }
-
-    // --- Update Login Form Handler ---
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const idInput = document.getElementById('loginId').value.trim();
-        const passInput = document.getElementById('loginPass').value.trim();
-        
-        if (idInput && passInput) {
-            showLoader();
-            
-            try {
-                const isValid = await verifyCredentials(idInput, passInput);
-                
-                if (isValid) {
-                    closeLoginModal();
-                    enableEditMode();
-                    showToast('Edit mode activated', 'success');
-                } else {
-                    showToast('Invalid ID or Edit Code', 'error');
-                    shakeLoginModal();
-                }
-            } catch (error) {
-                showToast('Login failed. Check connection.', 'error');
             } finally {
                 hideLoader();
             }
-        } else {
-            showToast('Please enter ID and Edit Code', 'error');
-        }
-    });
-
-    // --- Sync Indicator Functions ---
-    function showSyncIndicator(message, type = 'normal') {
-        syncIndicator.classList.remove('hidden', 'syncing', 'synced', 'error');
-        syncIndicator.classList.add(type);
-        syncStatus.textContent = message;
-        syncIndicator.classList.remove('hidden');
-    }
-
-    function hideSyncIndicator() {
-        syncIndicator.classList.add('hidden');
-    }
-
-    function updateSyncStatus(message, type = 'normal') {
-        showSyncIndicator(message, type);
-        if (type === 'synced') {
-            setTimeout(() => hideSyncIndicator(), 2000);
-        } else if (type === 'error') {
-            setTimeout(() => hideSyncIndicator(), 3000);
-        }
-    }
-
-    // --- Loader Functions ---
-    function showLoader() {
-        loadingPopup.classList.remove('pointer-events-none', 'opacity-0');
-        loadingPopup.style.display = 'flex';
-    }
-
-    function hideLoader() {
-        loadingPopup.classList.add('opacity-0');
-        setTimeout(() => {
-            loadingPopup.style.display = 'none';
-            loadingPopup.classList.add('pointer-events-none');
-        }, 500);
-    }
-
-    // --- Edit Mode Functions ---
-    const editToggle = document.getElementById('editToggle');
-
-    editToggle.addEventListener('change', (e) => {
-        if (e.target.checked) {
-            e.target.checked = false;
-            openLoginModal();
-        } else {
-            disableEditMode();
-        }
-    });
-
-    function enableEditMode() {
-        document.body.classList.add('edit-mode');
-        editToggle.checked = true;
-    }
-
-    function disableEditMode() {
-        document.body.classList.remove('edit-mode');
-        editToggle.checked = false;
-    }
-
-    // --- Login Modal Functions ---
-    const loginModal = document.getElementById('loginModal');
-    const loginBackdrop = document.getElementById('loginModalBackdrop');
-    const loginContent = document.getElementById('loginModalContent');
-
-    function openLoginModal() {
-        loginModal.classList.remove('hidden');
-        setTimeout(() => {
-            loginBackdrop.classList.remove('opacity-0');
-            loginContent.classList.remove('scale-95', 'opacity-0');
-            loginContent.classList.add('scale-100', 'opacity-100');
-        }, 10);
-        document.getElementById('loginId').focus();
-    }
-
-    function closeLoginModal() {
-        loginBackdrop.classList.add('opacity-0');
-        loginContent.classList.remove('scale-100', 'opacity-100');
-        loginContent.classList.add('scale-95', 'opacity-0');
-        setTimeout(() => {
-            loginModal.classList.add('hidden');
-            document.getElementById('loginForm').reset();
-        }, 300);
-    }
-
-    function shakeLoginModal() {
-        const content = document.getElementById('loginModalContent');
-        content.classList.add('translate-x-[-10px]');
-        setTimeout(() => {
-            content.classList.remove('translate-x-[-10px]');
-            content.classList.add('translate-x-[10px]');
-            setTimeout(() => {
-                content.classList.remove('translate-x-[10px]');
-            }, 100);
-        }, 100);
-    }
-
-    // --- Refresh Function ---
-    function refreshData() {
-        const icon = document.getElementById('refreshIcon');
-        icon.classList.add('animate-spin');
-        loadDataFromSheets();
-        setTimeout(() => {
-            icon.classList.remove('animate-spin');
-        }, 600);
-    }
-
-    // --- KEEP ALL YOUR EXISTING FUNCTIONS BELOW EXACTLY AS THEY ARE ---
-    // I'm only showing the modified functions above. Keep these functions unchanged:
-
-    // renderQuickCards()
-    // loadCacheFromStorage()
-    // saveCacheToStorage()
-    // enhanceCardsWithMetadata()
-    // fetchMeta()
-    // Event listeners for search/filters
-    // Modal functions (openModal, closeModal, etc.)
-    // editLink()
-    // promptDelete()
-    // confirmDelete()
-    // copyToClipboard()
-    // showToast()
-    // toggleTheme()
-    // initScrollProgress() (if you have it)
-    
-    // Only replace the functions I've shown above. Keep everything else.
-
-    // --- Initialization ---
-    window.addEventListener('load', () => {
-        // Set theme
-        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-            document.documentElement.classList.add('dark');
         }
 
-        // Load cache
-        loadCacheFromStorage();
+        async function deleteLinkFromSheets(url) {
+            showLoader();
+            showSyncIndicator('Deleting from Google Sheets...', 'syncing');
 
-        // Show loader
-        showLoader();
+            try {
+                const result = await callGoogleScript('deleteLinkFromSheet', { url: url });
 
-        // Load data from Google Sheets
-        setTimeout(() => {
-            loadDataFromSheets();
-        }, 500);
-        
-        console.log('🚀 Essential Links initialized');
-        console.log('🔗 GAS URL:', GAS_WEB_APP_URL);
-        console.log('📊 Sheet ID: 1Ay3yrlqXmec31ZHS7J_XiZwSjrNVn9ENh6cm10XTHE0');
-    });
+                if (result.success) {
+                    // Update local state
+                    links = links.filter(l => l.url !== url);
+                    localStorage.setItem('links', JSON.stringify(links));
 
-    // --- Add Debug Functions ---
-    window.testConnection = async function() {
-        console.log('🧪 Testing Google Apps Script connection...');
-        console.log('URL:', GAS_WEB_APP_URL);
-        
-        try {
-            const testUrl = `${GAS_WEB_APP_URL}?action=test`;
-            console.log('Test URL:', testUrl);
-            
-            const response = await fetch(testUrl);
-            console.log('Status:', response.status);
-            const text = await response.text();
-            console.log('Response:', text);
-            
-            if (response.status === 200) {
-                console.log('✅ GAS is working!');
-                return true;
-            } else {
-                console.log('❌ GAS returned error status');
+                    updateSyncStatus('Deleted from Google Sheets', 'synced');
+                    showToast('Link deleted from Google Sheets', 'success');
+                    renderQuickCards();
+                } else {
+                    updateSyncStatus('Delete failed', 'error');
+                    showToast('Failed to delete: ' + (result.error || result.message || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Delete failed:', error);
+
+                // Delete locally as fallback
+                links = links.filter(l => l.url !== url);
+                localStorage.setItem('links', JSON.stringify(links));
+
+                updateSyncStatus('Deleted locally', 'error');
+                showToast('Link deleted locally', 'warning');
+                renderQuickCards();
+            } finally {
+                hideLoader();
+            }
+        }
+
+        // --- Login Verification ---
+        async function verifyCredentials(id, password) {
+            try {
+                const result = await callGoogleScript('verifyCredentials', {
+                    id: id,
+                    password: password
+                });
+
+                return result && result.success;
+            } catch (error) {
+                console.error('Login verification failed:', error);
                 return false;
             }
-        } catch (error) {
-            console.error('❌ Test failed:', error);
-            return false;
         }
-    };
 
-    window.forceReload = function() {
-        localStorage.removeItem('links');
-        loadDataFromSheets();
-    };
-</script>
+        // --- Update Login Form Handler ---
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const idInput = document.getElementById('loginId').value.trim();
+            const passInput = document.getElementById('loginPass').value.trim();
+
+            if (idInput && passInput) {
+                showLoader();
+
+                try {
+                    const isValid = await verifyCredentials(idInput, passInput);
+
+                    if (isValid) {
+                        closeLoginModal();
+                        enableEditMode();
+                        showToast('Edit mode activated', 'success');
+                    } else {
+                        showToast('Invalid ID or Edit Code', 'error');
+                        shakeLoginModal();
+                    }
+                } catch (error) {
+                    showToast('Login failed. Check connection.', 'error');
+                } finally {
+                    hideLoader();
+                }
+            } else {
+                showToast('Please enter ID and Edit Code', 'error');
+            }
+        });
+
+        // --- Sync Indicator Functions ---
+        function showSyncIndicator(message, type = 'normal') {
+            syncIndicator.classList.remove('hidden', 'syncing', 'synced', 'error');
+            syncIndicator.classList.add(type);
+            syncStatus.textContent = message;
+            syncIndicator.classList.remove('hidden');
+        }
+
+        function hideSyncIndicator() {
+            syncIndicator.classList.add('hidden');
+        }
+
+        function updateSyncStatus(message, type = 'normal') {
+            showSyncIndicator(message, type);
+            if (type === 'synced') {
+                setTimeout(() => hideSyncIndicator(), 2000);
+            } else if (type === 'error') {
+                setTimeout(() => hideSyncIndicator(), 3000);
+            }
+        }
+
+        // --- Loader Functions ---
+        function showLoader() {
+            loadingPopup.classList.remove('pointer-events-none', 'opacity-0');
+            loadingPopup.style.display = 'flex';
+        }
+
+        function hideLoader() {
+            loadingPopup.classList.add('opacity-0');
+            setTimeout(() => {
+                loadingPopup.style.display = 'none';
+                loadingPopup.classList.add('pointer-events-none');
+            }, 500);
+        }
+
+        // --- Edit Mode Functions ---
+        const editToggle = document.getElementById('editToggle');
+
+        editToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                e.target.checked = false;
+                openLoginModal();
+            } else {
+                disableEditMode();
+            }
+        });
+
+        function enableEditMode() {
+            document.body.classList.add('edit-mode');
+            editToggle.checked = true;
+        }
+
+        function disableEditMode() {
+            document.body.classList.remove('edit-mode');
+            editToggle.checked = false;
+        }
+
+        // --- Login Modal Functions ---
+        const loginModal = document.getElementById('loginModal');
+        const loginBackdrop = document.getElementById('loginModalBackdrop');
+        const loginContent = document.getElementById('loginModalContent');
+
+        function openLoginModal() {
+            loginModal.classList.remove('hidden');
+            setTimeout(() => {
+                loginBackdrop.classList.remove('opacity-0');
+                loginContent.classList.remove('scale-95', 'opacity-0');
+                loginContent.classList.add('scale-100', 'opacity-100');
+            }, 10);
+            document.getElementById('loginId').focus();
+        }
+
+        function closeLoginModal() {
+            loginBackdrop.classList.add('opacity-0');
+            loginContent.classList.remove('scale-100', 'opacity-100');
+            loginContent.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                loginModal.classList.add('hidden');
+                document.getElementById('loginForm').reset();
+            }, 300);
+        }
+
+        function shakeLoginModal() {
+            const content = document.getElementById('loginModalContent');
+            content.classList.add('translate-x-[-10px]');
+            setTimeout(() => {
+                content.classList.remove('translate-x-[-10px]');
+                content.classList.add('translate-x-[10px]');
+                setTimeout(() => {
+                    content.classList.remove('translate-x-[10px]');
+                }, 100);
+            }, 100);
+        }
+
+        // --- Refresh Function ---
+        function refreshData() {
+            const icon = document.getElementById('refreshIcon');
+            icon.classList.add('animate-spin');
+            loadDataFromSheets();
+            setTimeout(() => {
+                icon.classList.remove('animate-spin');
+            }, 600);
+        }
+
+        // --- KEEP ALL YOUR EXISTING FUNCTIONS BELOW EXACTLY AS THEY ARE ---
+        // I'm only showing the modified functions above. Keep these functions unchanged:
+
+        // renderQuickCards()
+        // loadCacheFromStorage()
+        // saveCacheToStorage()
+        // enhanceCardsWithMetadata()
+        // fetchMeta()
+        // Event listeners for search/filters
+        // Modal functions (openModal, closeModal, etc.)
+        // editLink()
+        // promptDelete()
+        // confirmDelete()
+        // copyToClipboard()
+        // showToast()
+        // toggleTheme()
+        // initScrollProgress() (if you have it)
+
+        // Only replace the functions I've shown above. Keep everything else.
+
+        // --- Initialization ---
+        window.addEventListener('load', () => {
+            // Set theme
+            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            }
+
+            // Load cache
+            loadCacheFromStorage();
+
+            // Show loader
+            showLoader();
+
+            // Load data from Google Sheets
+            setTimeout(() => {
+                loadDataFromSheets();
+            }, 500);
+
+            console.log('🚀 Essential Links initialized');
+            console.log('🔗 GAS URL:', GAS_WEB_APP_URL);
+            console.log('📊 Sheet ID: 1Ay3yrlqXmec31ZHS7J_XiZwSjrNVn9ENh6cm10XTHE0');
+        });
+
+        // --- Add Debug Functions ---
+        window.testConnection = async function () {
+            console.log('🧪 Testing Google Apps Script connection...');
+            console.log('URL:', GAS_WEB_APP_URL);
+
+            try {
+                const testUrl = `${GAS_WEB_APP_URL}?action=test`;
+                console.log('Test URL:', testUrl);
+
+                const response = await fetch(testUrl);
+                console.log('Status:', response.status);
+                const text = await response.text();
+                console.log('Response:', text);
+
+                if (response.status === 200) {
+                    console.log('✅ GAS is working!');
+                    return true;
+                } else {
+                    console.log('❌ GAS returned error status');
+                    return false;
+                }
+            } catch (error) {
+                console.error('❌ Test failed:', error);
+                return false;
+            }
+        };
+
+        window.forceReload = function () {
+            localStorage.removeItem('links');
+            loadDataFromSheets();
+        };
+    </script>
 
     <!-- Floating Glass Scroll Progress Button -->
     <button id="scrollProgressBtn"
