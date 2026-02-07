@@ -1044,45 +1044,6 @@
             hideLoader();
         }
     }
-            
-            // Load data
-            const result = await callGoogleScript('getLinksFromSheet');
-            console.log('📊 GAS response:', result);
-            
-            if (result && result.success && result.data) {
-                links = result.data;
-                userCredentials = result.credentials || [];
-                
-                // Save to localStorage
-                localStorage.setItem('links', JSON.stringify(links));
-                localStorage.setItem('lastSync', new Date().toISOString());
-                
-                console.log(`✅ Loaded ${links.length} links via GAS`);
-                
-                updateSyncStatus(`Loaded ${links.length} links`, 'synced');
-                showToast(`Loaded ${links.length} links`, 'success');
-                
-                // Render
-                renderQuickCards();
-                setTimeout(() => enhanceCardsWithMetadata(), 100);
-                
-            } else {
-                console.error('❌ GAS error:', result?.error);
-                throw new Error(result?.error || 'Unknown GAS error');
-            }
-            
-        } catch (error) {
-            console.error('🚫 Load failed:', error);
-            updateSyncStatus('GAS error', 'error');
-            showToast('GAS error: ' + error.message, 'error');
-            
-            // Fallback
-            loadFromLocalStorage();
-            
-        } finally {
-            isSyncing = false;
-            hideLoader();
-}
 
     // --- Fallback to Local Storage ---
     function loadFromLocalStorage() {
