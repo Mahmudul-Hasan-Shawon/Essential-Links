@@ -923,14 +923,29 @@
             try {
                 console.log(`Calling ${functionName} with params:`, params);
                 
-                const response = await fetch(url, {
-                    method: 'POST',
-                    mode: 'cors',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: new URLSearchParams(params)
-                });
+                // Try multiple fetch approaches for better compatibility
+                let response;
+                try {
+                    // First attempt: Standard CORS request
+                    response = await fetch(url, {
+                        method: 'POST',
+                        mode: 'cors',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: new URLSearchParams(params)
+                    });
+                } catch (corsError) {
+                    console.warn('CORS request failed, trying no-cors mode:', corsError);
+                    // Second attempt: No-CORS mode (limited but may work)
+                    response = await fetch(url, {
+                        method: 'POST',
+                        mode: 'no-cors',
+                        body: new URLSearchParams(params)
+                    });
+                    // With no-cors, we can't read the response, so we'll need to handle this differently
+                    throw new Error('No-CORS mode used - cannot read response. Please check Google Apps Script deployment.');
+                }
 
                 console.log(`Response status: ${response.status} for ${functionName}`);
 
@@ -945,6 +960,21 @@
                 console.error(`Failed to call ${functionName}:`, error);
                 console.error('URL:', url);
                 console.error('Network error details:', error.message);
+                
+                // Provide specific guidance based on error type
+                if (error.message.includes('Failed to fetch')) {
+                    console.error(`
+🔧 TROUBLESHOOTING STEPS:
+1. Check Google Apps Script deployment:
+   - Deploy as Web App
+   - Execute as: "Me" 
+   - Who has access: "Anyone"
+2. Verify the GAS_WEB_APP_URL is correct
+3. Check spreadsheet sharing permissions
+4. Try opening the GAS URL directly in browser
+                    `);
+                }
+                
                 throw error;
             }
         }
@@ -996,18 +1026,27 @@
             showSyncIndicator('Testing connection...', 'syncing');
 
             try {
+                console.log('🔍 Checking Google Apps Script deployment...');
+                
                 // First test if the Google Apps Script URL is reachable
                 try {
                     const testResponse = await fetch(GAS_WEB_APP_URL, {
                         method: 'GET',
                         mode: 'cors'
                     });
-                    console.log('Google Apps Script reachable:', testResponse.status);
+                    
+                    if (testResponse.status === 200) {
+                        console.log('✅ Google Apps Script is reachable');
+                    } else {
+                        console.warn(`⚠️ Unexpected status: ${testResponse.status}`);
+                    }
                 } catch (testError) {
-                    console.error('Google Apps Script unreachable:', testError);
-                    throw new Error(`Google Apps Script deployment issue: ${testError.message}`);
+                    console.error('❌ Google Apps Script unreachable:', testError);
+                    updateSyncStatus('Google Apps Script not deployed correctly', 'error');
+                    throw new Error(`Deployment issue: ${testError.message}. Run debugGoogleSheets() for help.`);
                 }
 
+                console.log('📡 Loading data from Google Sheets...');
                 const result = await callGoogleScript('getLinksFromSheet');
 
                 if (result.success && result.data) {
@@ -1023,8 +1062,9 @@
                     showToast(`Loaded ${links.length} links`, 'success');
                 } else if (result.error) {
                     console.error('Sheet error:', result.error);
+                    updateSyncStatus('Google Sheets error - using local data', 'error');
+                    showToast('Google Sheets error, using local data', 'warning');
                     loadFromLocalStorage();
-                    updateSyncStatus('Using local data', 'error');
                 }
             } catch (error) {
                 console.error('Failed to load from sheets:', error);
@@ -1775,21 +1815,39 @@
             console.log('Current links in memory:', links.length);
             console.log('Is syncing:', isSyncing);
             
+            console.log(`
+🔧 GOOGLE APPS SCRIPT DEPLOYMENT CHECKLIST:
+1. Open Apps Script project
+2. Click "Deploy" > "New deployment"
+3. Type: "Web app"
+4. Execute as: "Me" (your Google account)
+5. Who has access: "Anyone" 
+6. Deploy
+7. Copy the Web app URL
+8. Update GAS_WEB_APP_URL in index.html
+9. Share the Google Sheet with "Anyone with link can view"
+            `);
+            
             try {
-                console.log('Testing basic connectivity...');
+                console.log('\n📡 Testing basic connectivity...');
                 const testResponse = await fetch(GAS_WEB_APP_URL, {
                     method: 'GET',
                     mode: 'cors'
                 });
                 console.log('✓ Basic connectivity OK:', testResponse.status);
                 
-                console.log('Testing API call...');
+                console.log('\n🔌 Testing API call...');
                 const result = await callGoogleScript('getLinksFromSheet');
                 console.log('✓ API call OK:', result);
             } catch (error) {
-                console.error('✗ Connection failed:', error);
+                console.error('\n❌ Connection failed:', error);
                 console.error('Error type:', error.name);
                 console.error('Error message:', error.message);
+                
+                if (error.message.includes('Failed to fetch')) {
+                    console.log('\n💡 SOLUTION: This is usually a deployment issue.');
+                    console.log('Please follow the checklist above and redeploy your Google Apps Script.');
+                }
             }
         };
 
