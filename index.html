@@ -903,89 +903,136 @@
 
 <script>
     // --- Configuration ---
-    const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwEnkYLxQdkWJm9VEdVUNyB4pMOEfrUjOFBPs6V3VZHvoFh4Rak5c0TD3ca5VwUZT9nYA/exec';
+    const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwEnkYLxQdkWJm9VEdVUNyB4pMOEfrUjOFBPs6V3VZHvoFh4Rak5c0TD3ca5VwUZT9nYA/exec'; // Update if you got a new URL
 
     // --- State ---
     let links = [];
+    let userCredentials = [];
     let currentFilter = '';
     let urlToDelete = null;
+    let isSyncing = false;
+    let metadataCache = new Map();
+    const container = document.getElementById('mainContainer');
+    const emptyState = document.getElementById('emptyState');
+    const loadingPopup = document.getElementById('loadingPopup');
+    const syncIndicator = document.getElementById('syncIndicator');
+    const syncStatus = document.getElementById('syncStatus');
+
+    // --- Test if GAS is working ---
+    async function testGAS() {
+        console.log('🧪 Testing GAS connection...');
+        const testUrl = `${GAS_WEB_APP_URL}?action=test`;
+        
+        try {
+            const response = await fetch(testUrl);
+            const text = await response.text();
+            console.log('Test response:', text);
+            
+            try {
+                const json = JSON.parse(text);
+                if (json.success) {
+                    console.log('✅ GAS is working!');
+                    return true;
+                }
+            } catch {
+                console.log('❌ GAS returned non-JSON:', text.substring(0, 100));
+                return false;
+            }
+        } catch (error) {
+            console.error('❌ GAS test failed:', error);
+            return false;
+        }
+        return false;
+    }
 
     // --- Simple Fetch Function ---
-    async function fetchData() {
+    async function callGoogleScript(functionName, params = {}) {
+        // Build URL
+        let url = `${GAS_WEB_APP_URL}?action=${functionName}`;
+        
+        // Add parameters
+        Object.keys(params).forEach(key => {
+            if (params[key] !== undefined && params[key] !== null) {
+                url += `&${key}=${encodeURIComponent(params[key])}`;
+            }
+        });
+        
+        console.log(`📤 Calling GAS: ${url}`);
+        
         try {
-            console.log('Fetching data from:', GAS_WEB_APP_URL);
+            const response = await fetch(url);
             
-            // Use JSONP to avoid CORS issues
-            return new Promise((resolve, reject) => {
-                const callbackName = 'callback_' + Date.now();
-                const script = document.createElement('script');
-                script.src = `${GAS_WEB_APP_URL}?action=getLinksFromSheet&callback=${callbackName}`;
-                
-                window[callbackName] = function(data) {
-                    delete window[callbackName];
-                    document.head.removeChild(script);
-                    resolve(data);
-                };
-                
-                script.onerror = () => {
-                    delete window[callbackName];
-                    reject(new Error('Failed to load data'));
-                };
-                
-                document.head.appendChild(script);
-                
-                // Timeout after 10 seconds
-                setTimeout(() => {
-                    if (window[callbackName]) {
-                        delete window[callbackName];
-                        reject(new Error('Timeout'));
-                    }
-                }, 10000);
-            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            
+            const text = await response.text();
+            console.log(`📥 Raw response:`, text.substring(0, 200));
+            
+            // Parse JSON
+            const result = JSON.parse(text);
+            return result;
             
         } catch (error) {
-            console.error('Fetch error:', error);
+            console.error(`❌ Failed to call ${functionName}:`, error);
             throw error;
         }
     }
 
-    // --- Load and Display Data ---
-    async function loadData() {
-        const loadingPopup = document.getElementById('loadingPopup');
-        const container = document.getElementById('mainContainer');
+        // --- Load Data from Google Sheets via GAS ---
+    async function loadDataFromSheets() {
+        if (isSyncing) return;
         
-        // Show loader
-        loadingPopup.style.display = 'flex';
+        isSyncing = true;
+        showLoader();
+        showSyncIndicator('Connecting to Google Sheets...', 'syncing');
+        
+        console.log('🔄 Loading data via GAS...');
         
         try {
-            console.log('🔄 Loading data from Google Sheets...');
+            // First test connection
+            const isWorking = await testGAS();
+            if (!isWorking) {
+                throw new Error('GAS not returning valid JSON. Check deployment.');
+            }
             
-            // Fetch data
-            const result = await fetchData();
-            console.log('📊 Received:', result);
+            // Load data
+            const result = await callGoogleScript('getLinksFromSheet');
+            console.log('📊 GAS response:', result);
             
             if (result && result.success && result.data) {
                 links = result.data;
+                userCredentials = result.credentials || [];
+                
+                // Save to localStorage
                 localStorage.setItem('links', JSON.stringify(links));
-                console.log(`✅ Loaded ${links.length} links`);
+                localStorage.setItem('lastSync', new Date().toISOString());
+                
+                console.log(`✅ Loaded ${links.length} links via GAS`);
+                
+                updateSyncStatus(`Loaded ${links.length} links`, 'synced');
                 showToast(`Loaded ${links.length} links`, 'success');
+                
+                // Render
+                renderQuickCards();
+                setTimeout(() => enhanceCardsWithMetadata(), 100);
+                
             } else {
-                console.error('Error in response:', result);
-                // Fallback to local storage
-                loadFromLocalStorage();
+                console.error('❌ GAS error:', result?.error);
+                throw new Error(result?.error || 'Unknown GAS error');
             }
             
-            // Render the data
-            renderCards();
-            
         } catch (error) {
-            console.error('❌ Failed to load:', error);
-            showToast('Using local data', 'warning');
+            console.error('🚫 Load failed:', error);
+            updateSyncStatus('GAS error', 'error');
+            showToast('GAS error: ' + error.message, 'error');
+            
+            // Fallback
             loadFromLocalStorage();
-            renderCards();
+            
         } finally {
-            // Hide loader
-            loadingPopup.style.display = 'none';
+            isSyncing = false;
+            hideLoader();
         }
     }
 
@@ -1005,7 +1052,6 @@
         }
     }
 
-    // --- Sample Data ---
     function loadSampleData() {
         links = [
             { url: 'https://uiverse.io/', group: 'Design', tags: ['ui', 'css'] },
@@ -1018,118 +1064,145 @@
         console.log(`🎨 Using ${links.length} sample links`);
     }
 
-    // --- Render Cards ---
-    function renderCards() {
-        const container = document.getElementById('mainContainer');
-        const emptyState = document.getElementById('emptyState');
+    // --- Render Cards (Use your EXISTING renderQuickCards function) ---
+    // DO NOT CHANGE this function - it should work as-is with the 'links' array
+    function renderQuickCards() {
+        // Your existing renderQuickCards function should work
+        // It uses the 'links' array which we've populated
+    }
+
+    // --- Verify Credentials ---
+    async function verifyCredentials(id, password) {
+        // Check against credentials from sheet
+        return userCredentials.some(cred => 
+            cred.id === id && cred.password === password
+        );
+    }
+
+    // --- Update Login Form ---
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const idInput = document.getElementById('loginId').value.trim();
+        const passInput = document.getElementById('loginPass').value.trim();
         
-        if (!container) return;
-        
-        container.innerHTML = '';
-        
-        if (links.length === 0) {
-            emptyState.classList.remove('hidden');
-            return;
+        if (idInput && passInput) {
+            showLoader();
+            
+            const isValid = await verifyCredentials(idInput, passInput);
+            
+            if (isValid) {
+                closeLoginModal();
+                enableEditMode();
+                showToast('Edit mode activated', 'success');
+            } else {
+                showToast('Invalid ID or Edit Code', 'error');
+                shakeLoginModal();
+            }
+            
+            hideLoader();
+        } else {
+            showToast('Please enter ID and Edit Code', 'error');
         }
-        
-        emptyState.classList.add('hidden');
-        
-        // Group by category
-        const groups = {};
-        links.forEach(link => {
-            if (!groups[link.group]) groups[link.group] = [];
-            groups[link.group].push(link);
-        });
-        
-        // Render each group
-        for (const [groupName, groupLinks] of Object.entries(groups)) {
-            const section = document.createElement('div');
-            section.className = 'mb-12 animate-slide-up';
-            
-            section.innerHTML = `
-                <div class="flex items-center gap-3 mb-6 pl-1">
-                    <span class="w-2 h-2 rounded-full bg-violet-500 shadow-[0_0_10px_rgba(139,92,246,0.6)]"></span>
-                    <h2 class="text-xs font-bold uppercase tracking-widest text-violet-600 dark:text-violet-400">${groupName}</h2>
-                    <span class="text-xs text-stone-500 dark:text-slate-400">(${groupLinks.length})</span>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    ${groupLinks.map(link => createCardHTML(link)).join('')}
-                </div>
-            `;
-            
-            container.appendChild(section);
+    });
+
+    // --- CRUD Operations (Local only - for demo) ---
+    function saveLinkLocally(url, group, tags) {
+        const tagArray = Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim()).filter(t => t);
+        links.unshift({ url, group, tags: tagArray });
+        localStorage.setItem('links', JSON.stringify(links));
+        showToast('Link saved locally', 'success');
+        renderQuickCards();
+    }
+
+    function updateLinkLocally(oldUrl, newUrl, group, tags) {
+        const index = links.findIndex(l => l.url === oldUrl);
+        if (index !== -1) {
+            const tagArray = Array.isArray(tags) ? tags : tags.split(',').map(t => t.trim()).filter(t => t);
+            links[index] = { url: newUrl, group, tags: tagArray };
+            localStorage.setItem('links', JSON.stringify(links));
+            showToast('Link updated locally', 'success');
+            renderQuickCards();
         }
     }
 
-    // --- Create Card HTML ---
-    function createCardHTML(link) {
-        const domain = new URL(link.url).hostname.replace('www.', '');
-        const logoUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
-        const tagsHtml = (link.tags || []).map(tag => 
-            `<span class="px-2 py-1 bg-violet-50/80 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/30 text-xs font-medium text-violet-600 dark:text-violet-300 rounded-md">${tag}</span>`
-        ).join('');
-        
-        return `
-            <div class="glass-card rounded-3xl p-6 relative group h-full quick-card">
-                <div class="relative mb-6 overflow-hidden rounded-2xl aspect-video bg-stone-100 dark:bg-slate-800/50 border border-white/20 dark:border-white/5 group-hover:border-violet-200/50 transition-colors">
-                    <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-violet-50 to-white dark:from-slate-800 dark:to-slate-900">
-                        <i class="fa-solid fa-globe text-3xl text-violet-200 dark:text-slate-600"></i>
-                    </div>
-                </div>
-                
-                <div class="flex-1">
-                    <div class="flex items-start gap-3 mb-3">
-                        <div class="w-12 h-12 rounded-full bg-white dark:bg-slate-800 shadow-sm flex items-center justify-center border border-stone-100 dark:border-slate-700 overflow-hidden shrink-0 mt-1">
-                            <img src="${logoUrl}" class="w-6 h-6 object-contain">
-                        </div>
-                        <h3 class="text-lg font-bold text-stone-900 dark:text-white leading-snug tracking-tight" title="${domain}">${domain}</h3>
-                    </div>
-                    <p class="text-stone-500 dark:text-slate-400 text-sm line-clamp-2 leading-relaxed mb-6 h-10">
-                        Visit ${domain} for ${link.group.toLowerCase()} resources
-                    </p>
-                </div>
-                
-                <div class="mt-auto pt-5 border-t border-stone-100/50 dark:border-slate-700/50 flex items-center justify-between">
-                    <div class="flex gap-2 flex-wrap">${tagsHtml}</div>
-                    <div class="flex gap-2">
-                        <button onclick="copyToClipboard('${link.url}', this)" class="w-10 h-10 rounded-xl bg-stone-100 dark:bg-slate-700 text-stone-500 dark:text-slate-400 hover:bg-violet-100 hover:text-violet-600 dark:hover:bg-violet-900/30 dark:hover:text-violet-300 transition-colors flex items-center justify-center" title="Copy">
-                            <i class="fa-regular fa-copy text-sm"></i>
-                        </button>
-                        <a href="${link.url}" target="_blank" class="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-600 text-violet-600 dark:text-white hover:scale-110 hover:shadow-lg hover:shadow-violet-500/30 transition-all duration-300 flex items-center justify-center" title="Visit">
-                            <i class="fa-solid fa-arrow-up-right-from-square text-sm"></i>
-                        </a>
-                    </div>
-                </div>
-            </div>
-        `;
+    function deleteLinkLocally(url) {
+        links = links.filter(l => l.url !== url);
+        localStorage.setItem('links', JSON.stringify(links));
+        showToast('Link deleted locally', 'success');
+        renderQuickCards();
     }
 
-    // --- Helper Functions ---
-    function copyToClipboard(text, btnElement) {
-        navigator.clipboard.writeText(text).then(() => {
-            const icon = btnElement.querySelector('i');
-            icon.className = 'fa-solid fa-check text-sm text-emerald-500';
+    // --- Loader Functions ---
+    function showLoader() {
+        const loadingPopup = document.getElementById('loadingPopup');
+        if (loadingPopup) {
+            loadingPopup.classList.remove('pointer-events-none', 'opacity-0');
+            loadingPopup.style.display = 'flex';
+        }
+    }
+
+    function hideLoader() {
+        const loadingPopup = document.getElementById('loadingPopup');
+        if (loadingPopup) {
+            loadingPopup.classList.add('opacity-0');
             setTimeout(() => {
-                icon.className = 'fa-regular fa-copy text-sm';
-            }, 1500);
-            showToast('Copied to clipboard', 'success');
+                loadingPopup.style.display = 'none';
+                loadingPopup.classList.add('pointer-events-none');
+            }, 500);
+        }
+    }
+
+    // --- Edit Mode Functions ---
+    function enableEditMode() {
+        document.body.classList.add('edit-mode');
+        const editToggle = document.getElementById('editToggle');
+        if (editToggle) editToggle.checked = true;
+    }
+
+    function disableEditMode() {
+        document.body.classList.remove('edit-mode');
+        const editToggle = document.getElementById('editToggle');
+        if (editToggle) editToggle.checked = false;
+    }
+
+    // --- Update Edit Toggle ---
+    const editToggle = document.getElementById('editToggle');
+    if (editToggle) {
+        editToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                e.target.checked = false;
+                openLoginModal();
+            } else {
+                disableEditMode();
+            }
         });
     }
 
+    // --- Toast Function ---
     function showToast(message, type = 'info') {
         const toastContainer = document.getElementById('toastContainer');
         if (!toastContainer) return;
         
         const toast = document.createElement('div');
-        const colors = type === 'success' ? 'border-emerald-500' : 
-                      type === 'error' ? 'border-red-500' : 
-                      type === 'warning' ? 'border-amber-500' : 'border-violet-500';
+        let colors = '';
+        let icon = '';
         
-        toast.className = `pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-lg shadow-xl backdrop-blur-sm transform transition-all duration-300 bg-white/90 dark:bg-slate-800/90 border-l-4 ${colors} text-stone-800 dark:text-white`;
-        toast.innerHTML = `
-            <i class="fa-solid fa-circle-info"></i>
-            <span class="text-xs font-medium">${message}</span>
-        `;
+        if (type === 'success') {
+            colors = 'bg-white/90 dark:bg-slate-800/90 border-l-4 border-emerald-500';
+            icon = '<i class="fa-solid fa-check-circle text-emerald-500"></i>';
+        } else if (type === 'error') {
+            colors = 'bg-white/90 dark:bg-slate-800/90 border-l-4 border-red-500';
+            icon = '<i class="fa-solid fa-circle-exclamation text-red-500"></i>';
+        } else if (type === 'warning') {
+            colors = 'bg-white/90 dark:bg-slate-800/90 border-l-4 border-amber-500';
+            icon = '<i class="fa-solid fa-triangle-exclamation text-amber-500"></i>';
+        } else {
+            colors = 'bg-white/90 dark:bg-slate-800/90 border-l-4 border-violet-500';
+            icon = '<i class="fa-solid fa-circle-info text-violet-500"></i>';
+        }
+        
+        toast.className = `pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-lg shadow-xl backdrop-blur-sm transform transition-all duration-300 ${colors} text-stone-800 dark:text-white`;
+        toast.innerHTML = `${icon}<span class="text-xs font-medium">${message}</span>`;
         
         toastContainer.appendChild(toast);
         
@@ -1140,89 +1213,56 @@
         }, 3000);
     }
 
-    // --- Fix DOM Warnings ---
-    document.addEventListener('DOMContentLoaded', function() {
-        // Fix autocomplete warnings
-        const loginId = document.getElementById('loginId');
-        const loginPass = document.getElementById('loginPass');
-        
-        if (loginId) loginId.setAttribute('autocomplete', 'username');
-        if (loginPass) {
-            loginPass.type = 'text';
-            loginPass.setAttribute('autocomplete', 'off');
-        }
-        
-        // Add favicon
-        if (!document.querySelector('link[rel="icon"]')) {
-            const favicon = document.createElement('link');
-            favicon.rel = 'icon';
-            favicon.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">🔗</text></svg>';
-            document.head.appendChild(favicon);
-        }
-    });
-
     // --- Initialize ---
-    window.addEventListener('load', function() {
+    window.addEventListener('load', () => {
         // Set theme
         if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
         }
         
+        console.log('🚀 Essential Links initialized');
+        console.log('📊 Sheet ID:', SHEET_ID);
+        console.log('🔗 Sheet URL:', SHEET_URL);
+        
         // Load data
         setTimeout(() => {
-            loadData();
+            loadDataFromGoogleSheet();
         }, 500);
-        
-        console.log('🚀 Essential Links initialized');
-        console.log('🔗 GAS URL:', GAS_WEB_APP_URL);
     });
 
-    // --- Theme Toggle ---
-    window.toggleTheme = function() {
-        document.documentElement.classList.toggle('dark');
-        localStorage.theme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+    // --- Test Connection ---
+    window.testSheetConnection = async function() {
+        console.log('🧪 Testing Google Sheets connection...');
+        console.log('URL:', SHEET_URL);
+        
+        try {
+            const response = await fetch(SHEET_URL);
+            console.log('Status:', response.status);
+            
+            const text = await response.text();
+            console.log('Response (first 500 chars):', text.substring(0, 500));
+            
+            if (response.status === 200) {
+                console.log('✅ Google Sheets is accessible!');
+                return true;
+            } else {
+                console.log('❌ Google Sheets returned error status');
+                return false;
+            }
+        } catch (error) {
+            console.error('❌ Test failed:', error);
+            return false;
+        }
     };
 
-    // --- Search Function ---
-    document.addEventListener('DOMContentLoaded', function() {
-        const searchInput = document.getElementById('searchInput');
-        if (searchInput) {
-            searchInput.addEventListener('input', function() {
-                const query = this.value.toLowerCase();
-                const filtered = links.filter(link => 
-                    link.url.toLowerCase().includes(query) ||
-                    link.group.toLowerCase().includes(query) ||
-                    (link.tags && link.tags.some(tag => tag.toLowerCase().includes(query)))
-                );
-                
-                // Update display with filtered results
-                const tempLinks = links;
-                links = filtered;
-                renderCards();
-                links = tempLinks;
-            });
-        }
-    });
-
-    // --- Debug Function ---
-    window.testBackend = function() {
-        console.log('🧪 Testing backend connection...');
-        console.log('URL:', GAS_WEB_APP_URL);
-        
-        fetch(`${GAS_WEB_APP_URL}?action=getLinksFromSheet`)
-            .then(response => {
-                console.log('Status:', response.status);
-                return response.text();
-            })
-            .then(text => {
-                console.log('Response:', text.substring(0, 500));
-                if (text.includes('{') && text.includes('}')) {
-                    console.log('✅ Backend is returning JSON');
-                } else {
-                    console.log('❌ Backend is not returning valid JSON');
-                }
-            })
-            .catch(error => console.error('Error:', error));
+    // --- Refresh Function ---
+    window.refreshData = function() {
+        const icon = document.getElementById('refreshIcon');
+        if (icon) icon.classList.add('animate-spin');
+        loadDataFromGoogleSheet();
+        setTimeout(() => {
+            if (icon) icon.classList.remove('animate-spin');
+        }, 600);
     };
 </script>
 
