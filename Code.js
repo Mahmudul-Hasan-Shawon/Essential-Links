@@ -198,9 +198,13 @@ function doGet(e) {
     return handleJsonp(e);
   }
   
-  return ContentService
-    .createTextOutput("Essential Links API")
-    .setMimeType(ContentService.MimeType.TEXT);
+  // Serve the HTML frontend
+  var html = HtmlService.createTemplateFromFile("index");
+  var evaluated = html.evaluate();
+  evaluated.addMetaTag("viewport", "width=device-width, initial-scale=1");
+  return evaluated
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .setTitle("Essential Links – Glass Edition");
 }
 
 function handleJsonp(e) {

@@ -555,6 +555,13 @@
         .quick-card {
             animation: fadeIn 0.2s ease-out forwards;
         }
+
+        /* Shake Animation */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
     </style>
 </head>
 
@@ -905,7 +912,7 @@
     // --- Configuration ---
     const GAS_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwEnkYLxQdkWJm9VEdVUNyB4pMOEfrUjOFBPs6V3VZHvoFh4Rak5c0TD3ca5VwUZT9nYA/exec'; // Update if you got a new URL
         const SHEET_ID = '1Ay3yrlqXmec31ZHS7J_XiZwSjrNVn9ENh6cm10XTHE0';
-            const SHEET_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${SHEET_NAME}`;
+    const SHEET_NAME = 'Links';
 
 
     // --- State ---
@@ -982,8 +989,8 @@
         }
     }
 
-        // --- Load Data from Google Sheets via GAS ---
-    async function loadDataFromSheets() {
+// --- Load Data from Google Sheets via GAS ---
+    async function loadDataFromGoogleSheet() {
         if (isSyncing) return;
         
         isSyncing = true;
@@ -998,6 +1005,45 @@
             if (!isWorking) {
                 throw new Error('GAS not returning valid JSON. Check deployment.');
             }
+            
+            // Load data
+            const result = await callGoogleScript('getLinksFromSheet');
+            console.log('📊 GAS response:', result);
+            
+            if (result && result.success && result.data) {
+                links = result.data;
+                userCredentials = result.credentials || [];
+                
+                // Save to localStorage
+                localStorage.setItem('links', JSON.stringify(links));
+                localStorage.setItem('lastSync', new Date().toISOString());
+                
+                console.log(`✅ Loaded ${links.length} links via GAS`);
+                
+                updateSyncStatus(`Loaded ${links.length} links`, 'synced');
+                showToast(`Loaded ${links.length} links`, 'success');
+                
+                // Render
+                renderQuickCards();
+                
+            } else {
+                console.error('❌ GAS error:', result?.error);
+                throw new Error(result?.error || 'Unknown GAS error');
+            }
+            
+        } catch (error) {
+            console.error('🚫 Load failed:', error);
+            updateSyncStatus('GAS error', 'error');
+            showToast('GAS error: ' + error.message, 'error');
+            
+            // Fallback
+            loadFromLocalStorage();
+            
+        } finally {
+            isSyncing = false;
+            hideLoader();
+        }
+    }
             
             // Load data
             const result = await callGoogleScript('getLinksFromSheet');
@@ -1067,11 +1113,65 @@
         console.log(`🎨 Using ${links.length} sample links`);
     }
 
-    // --- Render Cards (Use your EXISTING renderQuickCards function) ---
-    // DO NOT CHANGE this function - it should work as-is with the 'links' array
+    // --- Render Cards ---
     function renderQuickCards() {
-        // Your existing renderQuickCards function should work
-        // It uses the 'links' array which we've populated
+        const filteredLinks = currentFilter 
+            ? links.filter(link => link.group === currentFilter)
+            : links;
+
+        const searchQuery = document.getElementById('searchInput')?.value.toLowerCase() || '';
+        const finalFilteredLinks = searchQuery
+            ? filteredLinks.filter(link => 
+                link.url.toLowerCase().includes(searchQuery) ||
+                link.group.toLowerCase().includes(searchQuery) ||
+                link.tags.some(tag => tag.toLowerCase().includes(searchQuery))
+            )
+            : filteredLinks;
+
+        if (finalFilteredLinks.length === 0) {
+            container.innerHTML = '';
+            emptyState.classList.remove('hidden');
+            return;
+        }
+
+        emptyState.classList.add('hidden');
+        
+        container.innerHTML = finalFilteredLinks.map(link => {
+            const domain = new URL(link.url).hostname;
+            const tagsHtml = link.tags.map(tag => 
+                `<span class="px-2 py-0.5 text-[10px] rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-300">${tag}</span>`
+            ).join(' ');
+            
+            return `
+                <div class="glass-card p-5 rounded-2xl mb-4 quick-card group" data-url="${link.url}">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm">
+                                ${domain.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <h3 class="font-semibold text-stone-900 dark:text-white">${link.group}</h3>
+                                <p class="text-xs text-stone-500 dark:text-slate-400">${domain}</p>
+                            </div>
+                        </div>
+                        <div class="card-actions flex gap-1">
+                            <button onclick="editLink('${link.url}')" class="w-6 h-6 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors">
+                                <i class="fa-solid fa-edit text-[10px]"></i>
+                            </button>
+                            <button onclick="deleteLink('${link.url}')" class="w-6 h-6 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors">
+                                <i class="fa-solid fa-trash text-[10px]"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <a href="${link.url}" target="_blank" rel="noopener noreferrer" class="text-sm text-stone-700 dark:text-stone-300 hover:text-violet-600 dark:hover:text-violet-400 transition-colors line-clamp-2">
+                        ${link.url}
+                    </a>
+                    <div class="flex flex-wrap gap-1 mt-3">
+                        ${tagsHtml}
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
 
     // --- Verify Credentials ---
@@ -1081,6 +1181,32 @@
             cred.id === id && cred.password === password
         );
     }
+
+    // --- Form Event Listeners ---
+    document.getElementById('addForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const url = document.getElementById('urlInput').value.trim();
+        const group = document.getElementById('groupInput').value;
+        const tags = document.getElementById('tagsInput').value.split(',').map(t => t.trim()).filter(t => t);
+        
+        if (url && group) {
+            saveLinkLocally(url, group, tags);
+            closeModal();
+        }
+    });
+
+    document.getElementById('editForm').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const oldUrl = links.find(l => l.url === document.getElementById('editUrlInput').value)?.url;
+        const newUrl = document.getElementById('editUrlInput').value.trim();
+        const group = document.getElementById('editGroupInput').value;
+        const tags = document.getElementById('editTagsInput').value.split(',').map(t => t.trim()).filter(t => t);
+        
+        if (oldUrl && newUrl && group) {
+            updateLinkLocally(oldUrl, newUrl, group, tags);
+            closeEditModal();
+        }
+    });
 
     // --- Update Login Form ---
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -1107,6 +1233,34 @@
             showToast('Please enter ID and Edit Code', 'error');
         }
     });
+
+    // --- Search Input Handler ---
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            renderQuickCards();
+            
+            // Show/hide clear button
+            const clearBtn = document.getElementById('clearSearch');
+            if (clearBtn) {
+                if (e.target.value) {
+                    clearBtn.classList.remove('hidden');
+                } else {
+                    clearBtn.classList.add('hidden');
+                }
+            }
+        });
+    }
+
+    // --- Clear Search Button ---
+    const clearSearchBtn = document.getElementById('clearSearch');
+    if (clearSearchBtn) {
+        clearSearchBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            renderQuickCards();
+            clearSearchBtn.classList.add('hidden');
+        });
+    }
 
     // --- CRUD Operations (Local only - for demo) ---
     function saveLinkLocally(url, group, tags) {
@@ -1155,6 +1309,24 @@
         }
     }
 
+    // --- Sync Indicator Functions ---
+    function showSyncIndicator(message, status = 'synced') {
+        if (syncIndicator) {
+            syncIndicator.classList.remove('hidden');
+            syncStatus.textContent = message;
+            syncIndicator.className = `sync-indicator ${status}`;
+        }
+    }
+
+    function updateSyncStatus(message, status = 'synced') {
+        if (syncStatus) {
+            syncStatus.textContent = message;
+        }
+        if (syncIndicator) {
+            syncIndicator.className = `sync-indicator ${status}`;
+        }
+    }
+
     // --- Edit Mode Functions ---
     function enableEditMode() {
         document.body.classList.add('edit-mode');
@@ -1166,6 +1338,187 @@
         document.body.classList.remove('edit-mode');
         const editToggle = document.getElementById('editToggle');
         if (editToggle) editToggle.checked = false;
+    }
+
+    // --- Modal Functions ---
+    function openModal() {
+        const modal = document.getElementById('modal');
+        const backdrop = document.getElementById('modalBackdrop');
+        const content = document.getElementById('modalContent');
+        
+        modal.classList.remove('hidden');
+        setTimeout(() => {
+            backdrop.classList.remove('opacity-0');
+            content.classList.remove('scale-95', 'opacity-0');
+            content.classList.add('scale-100', 'opacity-100');
+        }, 10);
+    }
+
+    function closeModal() {
+        const modal = document.getElementById('modal');
+        const backdrop = document.getElementById('modalBackdrop');
+        const content = document.getElementById('modalContent');
+        
+        backdrop.classList.add('opacity-0');
+        content.classList.add('scale-95', 'opacity-0');
+        content.classList.remove('scale-100', 'opacity-100');
+        
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            document.getElementById('addForm').reset();
+        }, 300);
+    }
+
+    function openLoginModal() {
+        const modal = document.getElementById('loginModal');
+        const backdrop = document.getElementById('loginModalBackdrop');
+        const content = document.getElementById('loginModalContent');
+        
+        modal.classList.remove('hidden');
+        setTimeout(() => {
+            backdrop.classList.remove('opacity-0');
+            content.classList.remove('scale-95', 'opacity-0');
+            content.classList.add('scale-100', 'opacity-100');
+        }, 10);
+    }
+
+    function closeLoginModal() {
+        const modal = document.getElementById('loginModal');
+        const backdrop = document.getElementById('loginModalBackdrop');
+        const content = document.getElementById('loginModalContent');
+        
+        backdrop.classList.add('opacity-0');
+        content.classList.add('scale-95', 'opacity-0');
+        content.classList.remove('scale-100', 'opacity-100');
+        
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            document.getElementById('loginForm').reset();
+        }, 300);
+    }
+
+    function shakeLoginModal() {
+        const content = document.getElementById('loginModalContent');
+        content.style.animation = 'shake 0.5s';
+        setTimeout(() => {
+            content.style.animation = '';
+        }, 500);
+    }
+
+    // --- CRUD Functions ---
+    function editLink(url) {
+        const link = links.find(l => l.url === url);
+        if (!link) return;
+        
+        document.getElementById('editUrlInput').value = link.url;
+        document.getElementById('editGroupInput').value = link.group;
+        document.getElementById('editTagsInput').value = link.tags.join(', ');
+        
+        const modal = document.getElementById('editModal');
+        const backdrop = document.getElementById('editModalBackdrop');
+        const content = document.getElementById('editModalContent');
+        
+        modal.classList.remove('hidden');
+        setTimeout(() => {
+            backdrop.classList.remove('opacity-0');
+            content.classList.remove('scale-95', 'opacity-0');
+            content.classList.add('scale-100', 'opacity-100');
+        }, 10);
+    }
+
+    function closeEditModal() {
+        const modal = document.getElementById('editModal');
+        const backdrop = document.getElementById('editModalBackdrop');
+        const content = document.getElementById('editModalContent');
+        
+        backdrop.classList.add('opacity-0');
+        content.classList.add('scale-95', 'opacity-0');
+        content.classList.remove('scale-100', 'opacity-100');
+        
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            document.getElementById('editForm').reset();
+        }, 300);
+    }
+
+    function deleteLink(url) {
+        urlToDelete = url;
+        const modal = document.getElementById('deleteModal');
+        const backdrop = document.getElementById('deleteModalBackdrop');
+        const content = document.getElementById('deleteModalContent');
+        
+        modal.classList.remove('hidden');
+        setTimeout(() => {
+            backdrop.classList.remove('opacity-0');
+            content.classList.remove('scale-95', 'opacity-0');
+            content.classList.add('scale-100', 'opacity-100');
+        }, 10);
+    }
+
+    function closeDeleteModal() {
+        const modal = document.getElementById('deleteModal');
+        const backdrop = document.getElementById('deleteModalBackdrop');
+        const content = document.getElementById('deleteModalContent');
+        
+        backdrop.classList.add('opacity-0');
+        content.classList.add('scale-95', 'opacity-0');
+        content.classList.remove('scale-100', 'opacity-100');
+        
+        setTimeout(() => {
+            modal.classList.add('hidden');
+            urlToDelete = null;
+        }, 300);
+    }
+
+    function confirmDelete() {
+        if (urlToDelete) {
+            deleteLinkLocally(urlToDelete);
+            closeDeleteModal();
+        }
+    }
+
+    // --- Theme Toggle ---
+    function toggleTheme() {
+        if (document.documentElement.classList.contains('dark')) {
+            document.documentElement.classList.remove('dark');
+            localStorage.theme = 'light';
+        } else {
+            document.documentElement.classList.add('dark');
+            localStorage.theme = 'dark';
+        }
+    }
+
+    // --- Search and Filter Functions ---
+    function setFilter(group) {
+        currentFilter = group;
+        const filterButton = document.getElementById('currentFilter');
+        if (filterButton) {
+            filterButton.textContent = group || 'All';
+        }
+        renderQuickCards();
+        toggleDropdown(); // Close dropdown
+    }
+
+    function toggleDropdown() {
+        const menu = document.getElementById('dropdownMenu');
+        const chevron = document.getElementById('chevron');
+        
+        if (menu.classList.contains('dropdown-hidden')) {
+            menu.classList.remove('dropdown-hidden', 'opacity-0', 'scale-95');
+            menu.classList.add('dropdown-visible', 'opacity-100', 'scale-100');
+            chevron.style.transform = 'rotate(180deg)';
+        } else {
+            menu.classList.add('dropdown-hidden', 'opacity-0', 'scale-95');
+            menu.classList.remove('dropdown-visible', 'opacity-100', 'scale-100');
+            chevron.style.transform = '';
+        }
+    }
+
+    function resetFilters() {
+        currentFilter = '';
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) searchInput.value = '';
+        setFilter('');
     }
 
     // --- Update Edit Toggle ---
