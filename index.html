@@ -6,6 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Essential Links – Glass Edition</title>
 
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🔗</text></svg>">
+
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
         rel="stylesheet">
@@ -884,7 +887,7 @@
                     <div>
                         <label
                             class="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500 ml-1">Password</label>
-                        <input type="password" id="loginPass" placeholder="Enter password"
+                        <input type="password" id="loginPass" placeholder="Enter password" autocomplete="current-password"
                             class="w-full px-4 py-2 rounded-lg bg-white/50 dark:bg-slate-800/50 border border-stone-200 dark:border-slate-700 focus:ring-2 focus:ring-violet-500/20 outline-none transition-all text-sm text-stone-900 dark:text-white">
                     </div>
                     <button type="submit"
@@ -918,6 +921,8 @@
             const url = `${GAS_WEB_APP_URL}?action=${functionName}`;
 
             try {
+                console.log(`Calling ${functionName} with params:`, params);
+                
                 const response = await fetch(url, {
                     method: 'POST',
                     mode: 'cors',
@@ -927,14 +932,19 @@
                     body: new URLSearchParams(params)
                 });
 
+                console.log(`Response status: ${response.status} for ${functionName}`);
+
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
 
                 const result = await response.json();
+                console.log(`Response for ${functionName}:`, result);
                 return result;
             } catch (error) {
                 console.error(`Failed to call ${functionName}:`, error);
+                console.error('URL:', url);
+                console.error('Network error details:', error.message);
                 throw error;
             }
         }
@@ -983,9 +993,21 @@
             if (isSyncing) return;
 
             isSyncing = true;
-            showSyncIndicator('Syncing with Google Sheets...', 'syncing');
+            showSyncIndicator('Testing connection...', 'syncing');
 
             try {
+                // First test if the Google Apps Script URL is reachable
+                try {
+                    const testResponse = await fetch(GAS_WEB_APP_URL, {
+                        method: 'GET',
+                        mode: 'cors'
+                    });
+                    console.log('Google Apps Script reachable:', testResponse.status);
+                } catch (testError) {
+                    console.error('Google Apps Script unreachable:', testError);
+                    throw new Error(`Google Apps Script deployment issue: ${testError.message}`);
+                }
+
                 const result = await callGoogleScript('getLinksFromSheet');
 
                 if (result.success && result.data) {
@@ -1006,8 +1028,20 @@
                 }
             } catch (error) {
                 console.error('Failed to load from sheets:', error);
+                
+                // Show more detailed error message
+                let errorMessage = 'Connection failed';
+                if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Google Apps Script not reachable - check deployment';
+                } else if (error.message.includes('CORS')) {
+                    errorMessage = 'CORS error - check Google Apps Script permissions';
+                } else {
+                    errorMessage = `Error: ${error.message}`;
+                }
+                
+                updateSyncStatus(errorMessage, 'error');
+                showToast(errorMessage, 'error');
                 loadFromLocalStorage();
-                updateSyncStatus('Connection failed', 'error');
             } finally {
                 isSyncing = false;
                 hideLoader();
@@ -1733,6 +1767,31 @@
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
         }
+
+        // --- Debug Function ---
+        window.debugGoogleSheets = async function() {
+            console.log('=== Google Sheets Debug Info ===');
+            console.log('GAS Web App URL:', GAS_WEB_APP_URL);
+            console.log('Current links in memory:', links.length);
+            console.log('Is syncing:', isSyncing);
+            
+            try {
+                console.log('Testing basic connectivity...');
+                const testResponse = await fetch(GAS_WEB_APP_URL, {
+                    method: 'GET',
+                    mode: 'cors'
+                });
+                console.log('✓ Basic connectivity OK:', testResponse.status);
+                
+                console.log('Testing API call...');
+                const result = await callGoogleScript('getLinksFromSheet');
+                console.log('✓ API call OK:', result);
+            } catch (error) {
+                console.error('✗ Connection failed:', error);
+                console.error('Error type:', error.name);
+                console.error('Error message:', error.message);
+            }
+        };
 
         // --- Theme ---
         function toggleTheme() {
